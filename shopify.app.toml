@@ -1,0 +1,34 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "65f3e979464f29fededf3f15dfe7cc80"
+name = "ERP-COMMERCE"
+application_url = "https://localhost:3000"
+embedded = true
+
+[webhooks]
+api_version = "2026-01"
+
+[access_scopes]
+# Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
+scopes = "read_all_orders,read_assigned_fulfillment_orders,write_assigned_fulfillment_orders,read_customer_events,read_customers,write_customers,read_customer_data_erasure,write_customer_data_erasure,read_customer_payment_methods,read_customer_merge,write_customer_merge,write_draft_orders,read_draft_orders,write_inventory,read_inventory,write_inventory_shipments,read_inventory_shipments,write_inventory_shipments_received_items,read_inventory_shipments_received_items,write_inventory_transfers,read_inventory_transfers,read_merchant_managed_fulfillment_orders,write_merchant_managed_fulfillment_orders,write_order_edits,read_order_edits,read_orders,write_orders,read_product_feeds,write_product_feeds,read_product_listings,write_product_listings,read_products,write_products,read_third_party_fulfillment_orders,write_third_party_fulfillment_orders"
+optional_scopes = [
+  "customer_read_companies",
+  "customer_write_companies",
+  "customer_write_customers",
+  "customer_read_customers",
+  "customer_read_draft_orders",
+  "customer_read_markets",
+  "customer_read_metaobjects",
+  "customer_read_orders",
+  "customer_write_orders",
+  "customer_read_quick_sale",
+  "customer_write_quick_sale",
+  "customer_read_store_credit_account_transactions",
+  "customer_read_store_credit_accounts",
+  "customer_write_own_subscription_contracts",
+  "customer_read_own_subscription_contracts"
+]
+use_legacy_install_flow = true
+
+[auth]
+redirect_urls = [ ]
