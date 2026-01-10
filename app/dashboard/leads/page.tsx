@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -32,15 +32,7 @@ export default function LeadsPage() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
 
-  useEffect(() => {
-    loadLeads();
-  }, []);
-
-  useEffect(() => {
-    filterLeads();
-  }, [leads, searchTerm, channelFilter]);
-
-  async function loadLeads() {
+  const loadLeads = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from('leads')
@@ -54,22 +46,9 @@ export default function LeadsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function deleteLead(id: string) {
-    if (!confirm('¿Estás seguro de que quieres eliminar este lead?')) return;
-
-    try {
-      const { error } = await supabase.from('leads').delete().eq('id', id);
-      if (error) throw error;
-      loadLeads();
-    } catch (error) {
-      console.error('Error deleting lead:', error);
-      alert('Error al eliminar el lead');
-    }
-  }
-
-  function filterLeads() {
+  const filterLeads = useCallback(() => {
     let filtered = [...leads];
 
     if (searchTerm) {
@@ -87,6 +66,27 @@ export default function LeadsPage() {
     }
 
     setFilteredLeads(filtered);
+  }, [leads, searchTerm, channelFilter]);
+
+  useEffect(() => {
+    loadLeads();
+  }, [loadLeads]);
+
+  useEffect(() => {
+    filterLeads();
+  }, [filterLeads]);
+
+  async function deleteLead(id: string) {
+    if (!confirm('¿Estás seguro de que quieres eliminar este lead?')) return;
+
+    try {
+      const { error } = await supabase.from('leads').delete().eq('id', id);
+      if (error) throw error;
+      loadLeads();
+    } catch (error) {
+      console.error('Error deleting lead:', error);
+      alert('Error al eliminar el lead');
+    }
   }
 
   const channelCounts = leads.reduce((acc, lead) => {
@@ -173,9 +173,9 @@ export default function LeadsPage() {
               />
             </div>
             <select
+              className="h-10 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2"
               value={channelFilter}
               onChange={(e) => setChannelFilter(e.target.value)}
-              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="all">Todos los canales</option>
               <option value="facebook">Facebook</option>
@@ -187,92 +187,83 @@ export default function LeadsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b text-left text-sm font-medium text-slate-500">
-                  <th className="pb-3 pr-4">Nombre</th>
-                  <th className="pb-3 pr-4">Contacto</th>
-                  <th className="pb-3 pr-4">Producto de Interés</th>
-                  <th className="pb-3 pr-4">Canal</th>
-                  <th className="pb-3 pr-4">Fecha</th>
-                  <th className="pb-3">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="text-sm">
-                {filteredLeads.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-8 text-center text-slate-500">
-                      No se encontraron leads
-                    </td>
-                  </tr>
-                ) : (
-                  filteredLeads.map((lead) => (
-                    <tr key={lead.id} className="border-b hover:bg-slate-50">
-                      <td className="py-3 pr-4">
-                        <div className="font-medium">{lead.name}</div>
-                        <div className="text-xs text-slate-500">ID: {lead.id.slice(0, 8)}</div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <div className="space-y-1">
-                          {lead.email && (
-                            <div className="flex items-center gap-1 text-xs">
-                              <Mail className="h-3 w-3 text-slate-400" />
-                              {lead.email}
-                            </div>
-                          )}
-                          {lead.phone && (
-                            <div className="flex items-center gap-1 text-xs">
-                              <Phone className="h-3 w-3 text-slate-400" />
-                              {lead.phone}
-                            </div>
-                          )}
-                          {!lead.email && !lead.phone && (
-                            <span className="text-xs text-slate-400">Sin contacto</span>
-                          )}
+          <div className="space-y-4">
+            {filteredLeads.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">
+                No se encontraron leads
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {filteredLeads.map((lead) => (
+                  <Card key={lead.id} className="overflow-hidden">
+                    <CardHeader className="pb-3 bg-slate-50/50 border-b">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-base font-semibold">
+                            {lead.name}
+                          </CardTitle>
+                          <p className="text-xs text-slate-500 mt-1">
+                            ID: {lead.id.slice(0, 8)}
+                          </p>
                         </div>
-                      </td>
-                      <td className="py-3 pr-4">
-                        {lead.products?.name || (
-                          <span className="text-slate-400">No especificado</span>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium capitalize">
-                          {lead.contact_channel}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4 text-slate-500">
-                        {format(new Date(lead.created_at), "d 'de' MMM, yyyy", {
-                          locale: es,
-                        })}
-                      </td>
-                      <td className="py-3">
-                        <div className="flex items-center gap-2">
+                        <div className="flex gap-2">
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-8 w-8 text-slate-500 hover:text-slate-900"
                             onClick={() => {
                               setEditingLead(lead);
                               setShowEditDialog(true);
                             }}
                           >
-                            <Pencil className="h-4 w-4 text-slate-500" />
+                            <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
+                            className="h-8 w-8 text-red-500 hover:text-red-700 hover:bg-red-50"
                             onClick={() => deleteLead(lead.id)}
                           >
-                            <Trash2 className="h-4 w-4 text-red-500" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-4 space-y-3">
+                      {lead.email && (
+                        <div className="flex items-center text-sm text-slate-600">
+                          <Mail className="mr-2 h-4 w-4 text-slate-400" />
+                          <a href={`mailto:${lead.email}`} className="hover:underline">
+                            {lead.email}
+                          </a>
+                        </div>
+                      )}
+                      {lead.phone && (
+                        <div className="flex items-center text-sm text-slate-600">
+                          <Phone className="mr-2 h-4 w-4 text-slate-400" />
+                          <a href={`tel:${lead.phone}`} className="hover:underline">
+                            {lead.phone}
+                          </a>
+                        </div>
+                      )}
+                      <div className="pt-2 flex items-center justify-between text-xs text-slate-500 border-t mt-3">
+                        <div className="flex items-center gap-2">
+                          <span className="capitalize px-2 py-0.5 rounded-full bg-slate-100 border font-medium">
+                            {lead.contact_channel}
+                          </span>
+                          {lead.products && (
+                            <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100 font-medium truncate max-w-[120px]">
+                              {lead.products.name}
+                            </span>
+                          )}
+                        </div>
+                        <span>{format(new Date(lead.created_at), 'PP', { locale: es })}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -283,12 +274,14 @@ export default function LeadsPage() {
         onSuccess={loadLeads}
       />
 
-      <EditLeadDialog
-        open={showEditDialog}
-        onOpenChange={setShowEditDialog}
-        onSuccess={loadLeads}
-        lead={editingLead}
-      />
+      {editingLead && (
+        <EditLeadDialog
+          lead={editingLead}
+          open={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          onSuccess={loadLeads}
+        />
+      )}
     </div>
   );
 }

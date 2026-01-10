@@ -43,6 +43,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signUp = async (email: string, password: string) => {
+    const allowedDomain = '@timbal.com.mx';
+    if (!email.toLowerCase().endsWith(allowedDomain)) {
+      throw new Error('El registro solo está permitido para correos @timbal.com.mx');
+    }
     const { error } = await supabase.auth.signUp({
       email,
       password,

@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { X, Plus } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 type Lead = {
   id: string;
@@ -33,6 +34,7 @@ type SaleItem = {
   product_id: string;
   quantity: number;
   price: number;
+  discount: number;
 };
 
 type Sale = {
@@ -45,6 +47,16 @@ type Sale = {
   leads: { name: string } | null;
   promotion_type?: string;
   discount_value?: number;
+  warehouse_id?: string;
+  marketing_channel?: string;
+  delivery_city?: string;
+  agent_name?: string;
+  source?: string;
+};
+
+type Warehouse = {
+  id: string;
+  name: string;
 };
 
 type Props = {
@@ -57,12 +69,20 @@ type Props = {
 export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [agents, setAgents] = useState<{ id: string; full_name: string }[]>([]);
+  
   const [selectedLead, setSelectedLead] = useState('');
   const [channel, setChannel] = useState<string>('facebook');
   const [items, setItems] = useState<SaleItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [promotionType, setPromotionType] = useState('none');
   const [discountValue, setDiscountValue] = useState(0);
+  
+  const [selectedWarehouse, setSelectedWarehouse] = useState('');
+  const [marketingChannel, setMarketingChannel] = useState('');
+  const [deliveryCity, setDeliveryCity] = useState('');
+  const [agentName, setAgentName] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -76,18 +96,28 @@ export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
       setChannel(sale.channel || 'facebook');
       setPromotionType(sale.promotion_type || 'none');
       setDiscountValue(sale.discount_value || 0);
+      
+      setSelectedWarehouse(sale.warehouse_id || '');
+      setMarketingChannel(sale.marketing_channel || '');
+      setDeliveryCity(sale.delivery_city || '');
+      setAgentName(sale.agent_name || '');
+      
       loadSaleItems(sale.id);
     }
   }, [sale, open]);
 
   async function loadData() {
-    const [leadsResult, productsResult] = await Promise.all([
+    const [leadsResult, productsResult, warehousesResult, agentsResult] = await Promise.all([
       supabase.from('leads').select('id, name, email').order('name'),
       supabase.from('products').select('*').eq('active', true).order('name'),
+      supabase.from('warehouses').select('id, name').order('name'),
+      supabase.from('profiles').select('id, full_name').order('full_name'),
     ]);
 
     if (leadsResult.data) setLeads(leadsResult.data);
     if (productsResult.data) setProducts(productsResult.data);
+    if (warehousesResult.data) setWarehouses(warehousesResult.data);
+    if (agentsResult.data) setAgents(agentsResult.data as any);
   }
 
   async function loadSaleItems(saleId: string) {
@@ -103,13 +133,14 @@ export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
           product_id: item.product_id,
           quantity: item.quantity,
           price: item.price,
+          discount: item.discount || 0,
         }))
       );
     }
   }
 
   function addItem() {
-    setItems([...items, { product_id: '', quantity: 1, price: 0 }]);
+    setItems([...items, { product_id: '', quantity: 1, price: 0, discount: 0 }]);
   }
 
   function removeItem(index: number) {
@@ -128,32 +159,30 @@ export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
       newItems[index].quantity = value as number;
     } else if (field === 'price') {
       newItems[index].price = value as number;
+    } else if (field === 'discount') {
+      newItems[index].discount = value as number;
     }
 
     setItems(newItems);
   }
 
   function calculateTotal() {
-    let total = items.reduce(
+    const subtotal = items.reduce(
       (sum, item) => sum + Number(item.price) * item.quantity,
       0
     );
-
-    if (promotionType === 'percentage') {
-      total = total * (1 - discountValue / 100);
-    } else if (promotionType === '2x1') {
-      total = items.reduce((sum, item) => {
-        const payQuantity = Math.ceil(item.quantity / 2);
-        return sum + Number(item.price) * payQuantity;
-      }, 0);
+    let discount = 0;
+    if (promotionType === '2x1') {
+      discount = subtotal * 0.5;
     } else if (promotionType === '3x1') {
-      total = items.reduce((sum, item) => {
-        const payQuantity = Math.ceil(item.quantity / 3);
-        return sum + Number(item.price) * payQuantity;
-      }, 0);
+      discount = subtotal * (2 / 3);
+    } else if (promotionType === '3x2') {
+      discount = subtotal * (1 / 3);
+    } else if (promotionType === 'percentage') {
+      discount = subtotal * (Math.min(Math.max(discountValue, 0), 100) / 100);
     }
-
-    return total;
+    const total = subtotal - discount;
+    return total < 0 ? 0 : total;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -180,13 +209,34 @@ export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
 
       const totalAmount = calculateTotal();
 
-      // Update sale
+      // Logic for updates with stock management:
+      // 1. Delete existing items. 
+      //    - Trigger `restore_inventory_on_sale_item_delete` will restore stock to the warehouse defined in the sale record (OLD warehouse).
+      // 2. Update sale record.
+      //    - This sets the NEW warehouse_id if changed.
+      // 3. Insert new items.
+      //    - Trigger `deduct_inventory_on_sale` will deduct stock from the warehouse defined in the sale record (NEW warehouse).
+      
+      // Step 1: Delete items
+      const { error: deleteError } = await supabase
+        .from('sale_items')
+        .delete()
+        .eq('sale_id', sale.id);
+
+      if (deleteError) throw deleteError;
+
+      // Step 2: Update sale
       const saleUpdateData: any = {
+        order_number: sale.order_number,
         lead_id: selectedLead || null,
         channel,
         total_amount: totalAmount,
         promotion_type: promotionType,
         discount_value: promotionType === 'percentage' ? discountValue : 0,
+        warehouse_id: selectedWarehouse || null,
+        marketing_channel: marketingChannel || null,
+        delivery_city: deliveryCity || null,
+        agent_name: agentName || null,
       };
 
       const { error: saleError } = await supabase
@@ -196,23 +246,13 @@ export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
 
       if (saleError) throw saleError;
 
-      // Update items: Strategy -> Delete all and recreate. 
-      // This is simpler than reconciling changes.
-      // Note: This changes IDs of items. If other tables reference sale_items, this is bad.
-      // Assuming simple schema where only sales and sale_items exist.
-      
-      const { error: deleteError } = await supabase
-        .from('sale_items')
-        .delete()
-        .eq('sale_id', sale.id);
-
-      if (deleteError) throw deleteError;
-
+      // Step 3: Insert items
       const saleItems = items.map((item) => ({
         sale_id: sale.id,
         product_id: item.product_id,
         quantity: item.quantity,
         price: item.price,
+        discount: item.discount || 0
       }));
 
       const { error: itemsError } = await supabase
@@ -225,50 +265,7 @@ export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
       onOpenChange(false);
     } catch (error: any) {
       console.error('Error updating sale:', error);
-      // Fallback: Retry without promotion fields if they don't exist
-      if (error.message?.includes('column') || error.code === '42703') {
-          try {
-             const totalAmount = calculateTotal();
-             const { error: retryError } = await supabase
-              .from('sales')
-              .update({
-                lead_id: selectedLead || null,
-                channel,
-                total_amount: totalAmount,
-              })
-              .eq('id', sale.id);
-             
-             if (retryError) throw retryError;
-             
-              const { error: deleteError } = await supabase
-                .from('sale_items')
-                .delete()
-                .eq('sale_id', sale.id);
-
-              if (deleteError) throw deleteError;
-
-              const saleItems = items.map((item) => ({
-                sale_id: sale.id,
-                product_id: item.product_id,
-                quantity: item.quantity,
-                price: item.price,
-              }));
-
-              const { error: itemsError } = await supabase
-                .from('sale_items')
-                .insert(saleItems);
-
-              if (itemsError) throw itemsError;
-
-              onSuccess();
-              onOpenChange(false);
-              return;
-          } catch (retryErr: any) {
-              alert('Error al actualizar la venta (reintento): ' + retryErr.message);
-          }
-      } else {
-        alert('Error al actualizar la venta: ' + error.message);
-      }
+      alert('Error al actualizar la venta: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -288,6 +285,18 @@ export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="order-number">Número de orden</Label>
+              <Input
+                id="order-number"
+                value={sale?.order_number || ''}
+                onChange={(e) => {
+                  if (!sale) return;
+                  // local mirror; we update on submit
+                  sale.order_number = e.target.value;
+                }}
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="edit-lead">Lead (opcional)</Label>
               <select
@@ -312,142 +321,173 @@ export function EditSaleDialog({ open, onOpenChange, onSuccess, sale }: Props) {
                 value={channel}
                 onChange={(e) => setChannel(e.target.value)}
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                required
               >
                 <option value="facebook">Facebook</option>
                 <option value="instagram">Instagram</option>
                 <option value="whatsapp">WhatsApp</option>
-                <option value="web">Web</option>
+                <option value="web">Sitio Web</option>
                 <option value="organico">Orgánico</option>
+                <option value="shopify">Shopify</option>
+                <option value="other">Otro</option>
               </select>
             </div>
-          </div>
 
-          <div className="space-y-4">
-            <Label>Promociones y Descuentos</Label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <select
-                  value={promotionType}
-                  onChange={(e) => setPromotionType(e.target.value)}
-                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                >
-                  <option value="none">Ninguna</option>
-                  <option value="2x1">2x1 (Lleva 2, paga 1)</option>
-                  <option value="3x1">3x1 (Lleva 3, paga 1)</option>
-                  <option value="percentage">Porcentaje de descuento</option>
-                </select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="promotion">Tipo de descuento</Label>
+              <select
+                id="promotion"
+                value={promotionType}
+                onChange={(e) => setPromotionType(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="none">Sin descuento</option>
+                <option value="2x1">2x1</option>
+                <option value="3x1">3x1</option>
+                <option value="3x2">3x2</option>
+                <option value="percentage">% personalizado</option>
+              </select>
               {promotionType === 'percentage' && (
-                <div>
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      min="0"
-                      max="100"
-                      value={discountValue}
-                      onChange={(e) => setDiscountValue(Number(e.target.value))}
-                      placeholder="%"
-                      className="pr-8"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
-                      %
-                    </span>
-                  </div>
+                <div className="space-y-2">
+                  <Label htmlFor="discountValue">% de descuento</Label>
+                  <Input
+                    id="discountValue"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={discountValue}
+                    onChange={(e) => setDiscountValue(Number(e.target.value))}
+                    placeholder="Ej. 10 para 10%"
+                  />
                 </div>
               )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-warehouse">Almacén</Label>
+              <select
+                id="edit-warehouse"
+                value={selectedWarehouse}
+                onChange={(e) => setSelectedWarehouse(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">Seleccionar almacén</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="marketing-channel">Canal de marketing</Label>
+              <Input
+                id="marketing-channel"
+                value={marketingChannel}
+                onChange={(e) => setMarketingChannel(e.target.value)}
+                placeholder="Ej. Ads, Referido"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="delivery-city">Ciudad de entrega</Label>
+              <Input
+                id="delivery-city"
+                value={deliveryCity}
+                onChange={(e) => setDeliveryCity(e.target.value)}
+                placeholder="Ciudad"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="agent">Agente de ventas</Label>
+              <Select
+                value={agentName}
+                onValueChange={setAgentName}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar agente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.full_name || agent.id}>
+                      {agent.full_name || 'Usuario ' + agent.id.slice(0, 4)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <Label>Productos</Label>
-              <Button type="button" size="sm" onClick={addItem} variant="outline">
+              <Button type="button" variant="outline" size="sm" onClick={addItem}>
                 <Plus className="mr-2 h-4 w-4" />
-                Agregar producto
+                Agregar Producto
               </Button>
             </div>
 
-            {items.map((item, index) => {
-              const product = products.find((p) => p.id === item.product_id);
-              return (
-                <div
-                  key={index}
-                  className="grid gap-3 rounded-lg border p-4 sm:grid-cols-[1fr,100px,100px,auto]"
-                >
-                  <div className="space-y-2">
-                    <Label>Producto</Label>
-                    <select
-                      value={item.product_id}
-                      onChange={(e) =>
-                        updateItem(index, 'product_id', e.target.value)
-                      }
-                      className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                      required
-                    >
-                      <option value="">Seleccionar</option>
-                      {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                          {product.name} - ${product.price} (Stock: {product.stock})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Cantidad</Label>
-                    <Input
-                      type="number"
-                      min="1"
-                      // Note: validation against stock is tricky during edit because 
-                      // current quantity is already consumed. 
-                      // Simple approach: don't limit by stock in UI strictly for now or use (stock + initial_quantity)
-                      value={item.quantity}
-                      onChange={(e) =>
-                        updateItem(index, 'quantity', parseInt(e.target.value) || 1)
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Precio</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={item.price}
-                      onChange={(e) =>
-                        updateItem(index, 'price', parseFloat(e.target.value) || 0)
-                      }
-                      required
-                    />
-                  </div>
-
-                  <div className="flex items-end">
-                    <Button
-                      type="button"
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => removeItem(index)}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
+            {items.map((item, index) => (
+              <div key={index} className="flex gap-2 items-start">
+                <div className="flex-1">
+                  <select
+                    className="flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    value={item.product_id}
+                    onChange={(e) =>
+                      updateItem(index, 'product_id', e.target.value)
+                    }
+                    required
+                  >
+                    <option value="">Seleccionar producto...</option>
+                    {products.map((product) => (
+                      <option key={product.id} value={product.id}>
+                        {product.name} (${product.price}) - Stock: {product.stock}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              );
-            })}
-
-            {items.length === 0 && (
-              <div className="rounded-lg border border-dashed p-8 text-center text-sm text-slate-500">
-                No hay productos agregados.
+                <div className="w-20">
+                  <Input
+                    type="number"
+                    min="1"
+                    placeholder="Cant."
+                    value={item.quantity}
+                    onChange={(e) =>
+                      updateItem(index, 'quantity', Number(e.target.value))
+                    }
+                    required
+                  />
+                </div>
+                <div className="w-24">
+                   <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="Desc."
+                    value={item.discount || ''}
+                    onChange={(e) =>
+                      updateItem(index, 'discount', Number(e.target.value))
+                    }
+                  />
+                </div>
+                <div className="w-24 pt-2 text-right text-sm font-medium">
+                  ${((item.price - (item.discount || 0)) * item.quantity).toFixed(2)}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeItem(index)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
               </div>
-            )}
+            ))}
           </div>
 
-          <div className="flex items-center justify-between rounded-lg bg-slate-50 p-4">
-            <span className="text-lg font-semibold">Total:</span>
-            <span className="text-2xl font-bold">${totalAmount.toFixed(2)}</span>
+          <div className="flex justify-end text-lg font-bold">
+            Total: ${calculateTotal().toFixed(2)}
           </div>
 
           <div className="flex gap-3">

@@ -12,15 +12,22 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { toast } from 'sonner';
+
+type Goal = {
+  id: string;
+  month: string;
+  target_amount: number;
+  channel: string | null;
+};
 
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess: () => void;
+  goal: Goal | null;
 };
 
-export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
+export function EditGoalDialog({ open, onOpenChange, onSuccess, goal }: Props) {
   const [formData, setFormData] = useState({
     month: '',
     target_amount: '',
@@ -29,44 +36,40 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      const currentMonth = new Date().toISOString().slice(0, 7);
+    if (goal && open) {
       setFormData({
-        month: currentMonth,
-        target_amount: '',
-        channel: 'all',
+        month: goal.month,
+        target_amount: goal.target_amount.toString(),
+        channel: goal.channel || 'all',
       });
     }
-  }, [open]);
+  }, [goal, open]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!goal) return;
     setLoading(true);
 
     try {
-      const { error } = await supabase.from('goals').insert({
-        month: formData.month,
-        target_amount: parseFloat(formData.target_amount),
-        channel: formData.channel,
-      });
+      const { error } = await supabase
+        .from('goals')
+        .update({
+          month: formData.month,
+          target_amount: parseFloat(formData.target_amount),
+          channel: formData.channel,
+        })
+        .eq('id', goal.id);
 
       if (error) throw error;
 
       onSuccess();
       onOpenChange(false);
-      toast.success('Objetivo creado correctamente', {
-        style: {
-          background: '#10B981',
-          color: 'white',
-          border: 'none',
-        }
-      });
     } catch (error: any) {
-      console.error('Error creating goal:', error);
+      console.error('Error updating goal:', error);
       if (error.code === '23505') {
-        toast.error('Ya existe un objetivo para este mes y canal');
+        alert('Ya existe un objetivo para este mes y canal');
       } else {
-        toast.error('Error al crear el objetivo: ' + error.message);
+        alert('Error al actualizar el objetivo: ' + error.message);
       }
     } finally {
       setLoading(false);
@@ -77,17 +80,17 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Nuevo Objetivo</DialogTitle>
+          <DialogTitle>Editar Objetivo</DialogTitle>
           <DialogDescription>
-            Define un objetivo mensual de ventas para un canal específico o para todos
+            Modifica el objetivo de ventas
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="month">Mes *</Label>
+            <Label htmlFor="edit-month">Mes *</Label>
             <Input
-              id="month"
+              id="edit-month"
               type="month"
               value={formData.month}
               onChange={(e) =>
@@ -98,9 +101,9 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="target_amount">Monto objetivo *</Label>
+            <Label htmlFor="edit-target_amount">Monto objetivo *</Label>
             <Input
-              id="target_amount"
+              id="edit-target_amount"
               type="number"
               step="0.01"
               min="0"
@@ -114,9 +117,9 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="channel">Canal *</Label>
+            <Label htmlFor="edit-channel">Canal *</Label>
             <select
-              id="channel"
+              id="edit-channel"
               value={formData.channel}
               onChange={(e) =>
                 setFormData({ ...formData, channel: e.target.value })
@@ -143,7 +146,7 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
               Cancelar
             </Button>
             <Button type="submit" disabled={loading} className="flex-1">
-              {loading ? 'Creando...' : 'Crear Objetivo'}
+              {loading ? 'Guardando...' : 'Guardar Cambios'}
             </Button>
           </div>
         </form>

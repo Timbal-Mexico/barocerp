@@ -21,6 +21,12 @@ export default function SignUpPage() {
     e.preventDefault();
     setError('');
 
+    const allowedDomain = '@timbal.com.mx';
+    if (!email.toLowerCase().endsWith(allowedDomain)) {
+      setError('Solo se permiten registros con correos @timbal.com.mx');
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError('Las contraseñas no coinciden');
       return;

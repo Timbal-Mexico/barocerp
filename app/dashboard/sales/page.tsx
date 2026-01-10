@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Search, Pencil, Trash2 } from 'lucide-react';
@@ -10,6 +11,7 @@ import { CreateSaleDialog } from '@/components/dashboard/create-sale-dialog';
 import { EditSaleDialog } from '@/components/dashboard/edit-sale-dialog';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import { SyncStatus } from '@/components/ui/sync-status';
 
 type Sale = {
   id: string;
@@ -30,32 +32,34 @@ export default function SalesPage() {
   const [channelFilter, setChannelFilter] = useState('all');
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  useEffect(() => {
-    loadSales();
-  }, []);
-
-  useEffect(() => {
-    filterSales();
-  }, [sales, searchTerm, channelFilter]);
-
-  async function loadSales() {
+  const loadSales = useCallback(async () => {
     try {
+      console.debug('sales-load-start');
       const { data, error } = await supabase
         .from('sales')
-        .select('*, leads(name)')
+        .select('*, leads!sales_lead_id_fkey(name)')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
       setSales(data || []);
+      const maxDate =
+        (data || [])
+          .map((s: any) => s.created_at)
+          .filter(Boolean)
+          .map((d: string) => new Date(d).getTime())
+          .reduce((a, b) => Math.max(a, b), 0) || Date.now();
+      setLastUpdated(new Date(maxDate));
+      console.debug('sales-load-success', { count: (data || []).length });
     } catch (error) {
       console.error('Error loading sales:', error);
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function deleteSale(id: string) {
+  const deleteSale = useCallback(async (id: string) => {
     if (!confirm('¿Estás seguro de que quieres eliminar esta venta? Esto restaurará el inventario.')) return;
 
     try {
@@ -66,9 +70,9 @@ export default function SalesPage() {
       console.error('Error deleting sale:', error);
       alert('Error al eliminar la venta');
     }
-  }
+  }, [loadSales]);
 
-  function filterSales() {
+  const filterSales = useCallback(() => {
     let filtered = [...sales];
 
     if (searchTerm) {
@@ -84,7 +88,15 @@ export default function SalesPage() {
     }
 
     setFilteredSales(filtered);
-  }
+  }, [sales, searchTerm, channelFilter]);
+
+  useEffect(() => {
+    loadSales();
+  }, [loadSales]);
+
+  useEffect(() => {
+    filterSales();
+  }, [filterSales]);
 
   const totalSales = filteredSales.reduce(
     (sum, sale) => sum + Number(sale.total_amount),
@@ -97,6 +109,7 @@ export default function SalesPage() {
 
   return (
     <div className="space-y-6">
+      <SyncStatus loading={loading} lastUpdated={lastUpdated} onRefresh={loadSales} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Ventas</h1>

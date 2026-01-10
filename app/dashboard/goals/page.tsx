@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, TrendingUp, Target } from 'lucide-react';
+import { Plus, TrendingUp, Target, Pencil, History, Trash2 } from 'lucide-react';
 import { CreateGoalDialog } from '@/components/dashboard/create-goal-dialog';
+import { EditGoalDialog } from '@/components/dashboard/edit-goal-dialog';
+import { GoalHistoryDialog } from '@/components/dashboard/goal-history-dialog';
 
 type Goal = {
   id: string;
@@ -25,10 +27,28 @@ export default function GoalsPage() {
   const [goals, setGoals] = useState<GoalWithProgress[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [historyGoalId, setHistoryGoalId] = useState<string | null>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
 
   useEffect(() => {
     loadGoals();
   }, []);
+
+  async function handleDelete(id: string) {
+    if (!confirm('¿Estás seguro de eliminar este objetivo?')) return;
+    
+    try {
+      const { error } = await supabase.from('goals').delete().eq('id', id);
+      if (error) throw error;
+      loadGoals();
+    } catch (error: any) {
+      console.error('Error deleting goal:', error);
+      alert('Error al eliminar: ' + error.message);
+    }
+  }
 
   async function loadGoals() {
     try {
@@ -82,18 +102,6 @@ export default function GoalsPage() {
       console.error('Error loading goals:', error);
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm('¿Estás seguro de eliminar este objetivo?')) return;
-
-    try {
-      const { error } = await supabase.from('goals').delete().eq('id', id);
-      if (error) throw error;
-      loadGoals();
-    } catch (error: any) {
-      alert('Error al eliminar: ' + error.message);
     }
   }
 
@@ -213,13 +221,35 @@ export default function GoalsPage() {
                         </span>
                       </p>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleDelete(goal.id)}
-                    >
-                      Eliminar
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setEditingGoal(goal);
+                          setShowEditDialog(true);
+                        }}
+                      >
+                        <Pencil className="h-4 w-4 text-slate-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => {
+                          setHistoryGoalId(goal.id);
+                          setShowHistoryDialog(true);
+                        }}
+                      >
+                        <History className="h-4 w-4 text-slate-500" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(goal.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -264,6 +294,19 @@ export default function GoalsPage() {
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
         onSuccess={loadGoals}
+      />
+
+      <EditGoalDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        onSuccess={loadGoals}
+        goal={editingGoal}
+      />
+
+      <GoalHistoryDialog
+        open={showHistoryDialog}
+        onOpenChange={setShowHistoryDialog}
+        goalId={historyGoalId}
       />
     </div>
   );

@@ -12,6 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toast } from 'sonner';
 
 type Product = {
   id: string;
@@ -26,24 +27,30 @@ type Props = {
 
 export function CreateLeadDialog({ open, onOpenChange, onSuccess }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<{ id: string; order_number: string }[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
     interest_product_id: '',
     contact_channel: 'facebook',
+    assigned_sale_id: '',
+    assigned_list: '',
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
       loadProducts();
+      loadSales();
       setFormData({
         name: '',
         email: '',
         phone: '',
         interest_product_id: '',
         contact_channel: 'facebook',
+        assigned_sale_id: '',
+        assigned_list: '',
       });
     }
   }, [open]);
@@ -57,6 +64,14 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: Props) {
 
     if (data) setProducts(data);
   }
+  async function loadSales() {
+    const { data } = await supabase
+      .from('sales')
+      .select('id, order_number')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (data) setSales(data);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -69,15 +84,24 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: Props) {
         phone: formData.phone || null,
         interest_product_id: formData.interest_product_id || null,
         contact_channel: formData.contact_channel,
+        assigned_sale_id: formData.assigned_sale_id || null,
+        assigned_list: formData.assigned_list || null,
       });
 
       if (error) throw error;
 
       onSuccess();
       onOpenChange(false);
+      toast.success('Lead creado correctamente', {
+        style: {
+          background: '#10B981',
+          color: 'white',
+          border: 'none',
+        }
+      });
     } catch (error: any) {
       console.error('Error creating lead:', error);
-      alert('Error al crear el lead: ' + error.message);
+      toast.error('Error al crear el lead: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -166,6 +190,37 @@ export function CreateLeadDialog({ open, onOpenChange, onSuccess }: Props) {
               <option value="web">Web</option>
               <option value="otro">Otro</option>
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="assigned_sale">Asignar a venta</Label>
+            <select
+              id="assigned_sale"
+              value={formData.assigned_sale_id}
+              onChange={(e) =>
+                setFormData({ ...formData, assigned_sale_id: e.target.value })
+              }
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Sin asignar</option>
+              {sales.map((sale) => (
+                <option key={sale.id} value={sale.id}>
+                  {sale.order_number}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="assigned_list">Lista de ventas (opcional)</Label>
+            <Input
+              id="assigned_list"
+              value={formData.assigned_list}
+              onChange={(e) =>
+                setFormData({ ...formData, assigned_list: e.target.value })
+              }
+              placeholder="Ej. Lista VIP, Q1 Promos"
+            />
           </div>
 
           <div className="flex gap-3">

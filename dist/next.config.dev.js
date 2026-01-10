@@ -1,8 +1,11 @@
+"use strict";
+
 /** @type {import('next').NextConfig} */
-const nextConfig = {
+var nextConfig = {
   output: 'standalone',
   productionBrowserSourceMaps: true,
-  images: { unoptimized: true },
+  images: {
+    unoptimized: true
+  }
 };
-
 module.exports = nextConfig;

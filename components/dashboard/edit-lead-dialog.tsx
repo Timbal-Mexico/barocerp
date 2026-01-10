@@ -38,18 +38,22 @@ type Props = {
 
 export function EditLeadDialog({ open, onOpenChange, onSuccess, lead }: Props) {
   const [products, setProducts] = useState<Product[]>([]);
+  const [sales, setSales] = useState<{ id: string; order_number: string }[]>([]);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
     interest_product_id: '',
     contact_channel: 'facebook',
+    assigned_sale_id: '',
+    assigned_list: '',
   });
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (open) {
       loadProducts();
+      loadSales();
     }
   }, [open]);
 
@@ -61,6 +65,8 @@ export function EditLeadDialog({ open, onOpenChange, onSuccess, lead }: Props) {
         phone: lead.phone || '',
         interest_product_id: lead.interest_product_id || '',
         contact_channel: lead.contact_channel || 'facebook',
+        assigned_sale_id: (lead as any).assigned_sale_id || '',
+        assigned_list: (lead as any).assigned_list || '',
       });
     }
   }, [lead]);
@@ -73,6 +79,14 @@ export function EditLeadDialog({ open, onOpenChange, onSuccess, lead }: Props) {
       .order('name');
 
     if (data) setProducts(data);
+  }
+  async function loadSales() {
+    const { data } = await supabase
+      .from('sales')
+      .select('id, order_number')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    if (data) setSales(data);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -90,6 +104,8 @@ export function EditLeadDialog({ open, onOpenChange, onSuccess, lead }: Props) {
           phone: formData.phone || null,
           interest_product_id: formData.interest_product_id || null,
           contact_channel: formData.contact_channel,
+          assigned_sale_id: formData.assigned_sale_id || null,
+          assigned_list: formData.assigned_list || null,
         })
         .eq('id', lead.id);
 
@@ -188,6 +204,36 @@ export function EditLeadDialog({ open, onOpenChange, onSuccess, lead }: Props) {
               <option value="web">Web</option>
               <option value="otro">Otro</option>
             </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-assigned_sale">Asignar a venta</Label>
+            <select
+              id="edit-assigned_sale"
+              value={formData.assigned_sale_id}
+              onChange={(e) =>
+                setFormData({ ...formData, assigned_sale_id: e.target.value })
+              }
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">Sin asignar</option>
+              {sales.map((sale) => (
+                <option key={sale.id} value={sale.id}>
+                  {sale.order_number}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="edit-assigned_list">Lista de ventas (opcional)</Label>
+            <Input
+              id="edit-assigned_list"
+              value={formData.assigned_list}
+              onChange={(e) =>
+                setFormData({ ...formData, assigned_list: e.target.value })
+              }
+            />
           </div>
 
           <div className="flex gap-3">

@@ -6,9 +6,15 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, RefreshCw, Save } from 'lucide-react';
+import { Loader2, RefreshCw, Save, Moon, Sun, Laptop } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { useAuth } from '@/lib/auth-context';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { toast } from 'sonner';
 
 export default function SettingsPage() {
+  const { setTheme, theme } = useTheme();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [shopUrl, setShopUrl] = useState('');
@@ -71,8 +77,28 @@ export default function SettingsPage() {
     }
   }
 
+  async function handleThemeChange(newTheme: string) {
+    setTheme(newTheme);
+    if (user) {
+      try {
+        await supabase
+          .from('profiles')
+          .upsert({ 
+            id: user.id, 
+            theme: newTheme,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'id' });
+        toast.success('Tema actualizado correctamente');
+      } catch (error) {
+        console.error('Error saving theme preference:', error);
+      }
+    }
+  }
+
   async function handleSync() {
+    if (!integrationId) return;
     setSyncing(true);
+
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
@@ -89,9 +115,9 @@ export default function SettingsPage() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Error en sincronización');
-      alert(`Sincronización completada: ${data.message}`);
+      toast.success(`Sincronización completada: ${data.message}`);
     } catch (error: any) {
-      alert('Error: ' + error.message);
+      toast.error('Error: ' + error.message);
     } finally {
       setSyncing(false);
     }
@@ -100,6 +126,95 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">Configuración</h1>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Apariencia</CardTitle>
+          <CardDescription>
+            Personaliza cómo se ve la aplicación en tu dispositivo.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RadioGroup
+            defaultValue={theme}
+            onValueChange={handleThemeChange}
+            className="grid max-w-md grid-cols-3 gap-8 pt-2"
+          >
+            <div>
+              <Label className="[&:has([data-state=checked])>div]:border-primary">
+                <RadioGroupItem value="light" className="sr-only" />
+                <div className="items-center rounded-md border-2 border-muted p-1 hover:border-accent">
+                  <div className="space-y-2 rounded-sm bg-[#ecedef] p-2">
+                    <div className="space-y-2 rounded-md bg-white p-2 shadow-sm">
+                      <div className="h-2 w-[80px] rounded-lg bg-[#ecedef]" />
+                      <div className="h-2 w-[100px] rounded-lg bg-[#ecedef]" />
+                    </div>
+                    <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-sm">
+                      <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
+                      <div className="h-2 w-[100px] rounded-lg bg-[#ecedef]" />
+                    </div>
+                    <div className="flex items-center space-x-2 rounded-md bg-white p-2 shadow-sm">
+                      <div className="h-4 w-4 rounded-full bg-[#ecedef]" />
+                      <div className="h-2 w-[100px] rounded-lg bg-[#ecedef]" />
+                    </div>
+                  </div>
+                </div>
+                <span className="block w-full p-2 text-center font-normal">
+                  Claro
+                </span>
+              </Label>
+            </div>
+            <div>
+              <Label className="[&:has([data-state=checked])>div]:border-primary">
+                <RadioGroupItem value="dark" className="sr-only" />
+                <div className="items-center rounded-md border-2 border-muted bg-popover p-1 hover:bg-accent hover:text-accent-foreground">
+                  <div className="space-y-2 rounded-sm bg-slate-950 p-2">
+                    <div className="space-y-2 rounded-md bg-slate-800 p-2 shadow-sm">
+                      <div className="h-2 w-[80px] rounded-lg bg-slate-400" />
+                      <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                    </div>
+                    <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-sm">
+                      <div className="h-4 w-4 rounded-full bg-slate-400" />
+                      <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                    </div>
+                    <div className="flex items-center space-x-2 rounded-md bg-slate-800 p-2 shadow-sm">
+                      <div className="h-4 w-4 rounded-full bg-slate-400" />
+                      <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                    </div>
+                  </div>
+                </div>
+                <span className="block w-full p-2 text-center font-normal">
+                  Oscuro
+                </span>
+              </Label>
+            </div>
+            <div>
+              <Label className="[&:has([data-state=checked])>div]:border-primary">
+                <RadioGroupItem value="system" className="sr-only" />
+                <div className="items-center rounded-md border-2 border-muted bg-popover p-1 hover:bg-accent hover:text-accent-foreground">
+                  <div className="space-y-2 rounded-sm bg-slate-300 p-2">
+                    <div className="space-y-2 rounded-md bg-slate-600 p-2 shadow-sm">
+                      <div className="h-2 w-[80px] rounded-lg bg-slate-400" />
+                      <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                    </div>
+                    <div className="flex items-center space-x-2 rounded-md bg-slate-600 p-2 shadow-sm">
+                      <div className="h-4 w-4 rounded-full bg-slate-400" />
+                      <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                    </div>
+                    <div className="flex items-center space-x-2 rounded-md bg-slate-600 p-2 shadow-sm">
+                      <div className="h-4 w-4 rounded-full bg-slate-400" />
+                      <div className="h-2 w-[100px] rounded-lg bg-slate-400" />
+                    </div>
+                  </div>
+                </div>
+                <span className="block w-full p-2 text-center font-normal">
+                  Sistema
+                </span>
+              </Label>
+            </div>
+          </RadioGroup>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -11,10 +11,13 @@ import {
   Target,
   LogOut,
   LayoutDashboard,
-  Settings
+  Settings,
+  User,
+  UserCog
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
+import { ModeToggle } from '@/components/mode-toggle';
 
 const navigation = [
   { name: 'Overview', href: '/dashboard/overview', icon: LayoutDashboard },
@@ -22,10 +25,12 @@ const navigation = [
   { name: 'Leads (CRM)', href: '/dashboard/leads', icon: Users },
   { name: 'Inventario', href: '/dashboard/inventory', icon: Package },
   { name: 'Objetivos', href: '/dashboard/goals', icon: Target },
+  { name: 'Usuarios', href: '/dashboard/users', icon: UserCog },
+  { name: 'Mi Perfil', href: '/dashboard/profile', icon: User },
   { name: 'Configuración', href: '/dashboard/settings', icon: Settings },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   const { signOut, user } = useAuth();
 
@@ -33,7 +38,7 @@ export function Sidebar() {
     <div className="flex h-full w-64 flex-col bg-slate-900 text-white">
       <div className="flex h-16 items-center gap-2 border-b border-slate-800 px-6">
         <BarChart3 className="h-8 w-8" />
-        <span className="text-xl font-bold">ERP Ligero</span>
+        <span className="text-xl font-bold">ERP Baroc</span>
       </div>
 
       <nav className="flex-1 space-y-1 px-3 py-4">
@@ -43,6 +48,7 @@ export function Sidebar() {
             <Link
               key={item.name}
               href={item.href}
+              onClick={onNavigate}
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 isActive
