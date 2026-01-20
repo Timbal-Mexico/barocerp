@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -54,22 +54,14 @@ export default function AuditLogsPage() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
 
-  useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  useEffect(() => {
-    fetchLogs();
-  }, [page, actionFilter, userFilter, dateFrom, dateTo]);
-
-  async function fetchUsers() {
+  const fetchUsers = useCallback(async () => {
     const { data } = await supabase
       .from('user_profiles')
       .select('auth_user_id, name, lastname, email');
     if (data) setUsers(data);
-  }
+  }, []);
 
-  async function fetchLogs() {
+  const fetchLogs = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase
@@ -104,26 +96,35 @@ export default function AuditLogsPage() {
       if (error) throw error;
 
       if (data) {
-        setTotalCount(count || 0);
-        
-        // Enrich with user data manually since we don't have a view
-        // We already fetched users, so we can map locally
-        const enrichedLogs = data.map(log => {
-          const user = users.find(u => u.auth_user_id === log.changed_by);
-          return {
-            ...log,
-            user_profile: user
-          };
-        });
-        
+        // Fetch user profiles for the logs
+        const userIds = Array.from(new Set(data.map(log => log.changed_by)));
+        const { data: profiles } = await supabase
+          .from('user_profiles')
+          .select('auth_user_id, name, lastname, email')
+          .in('auth_user_id', userIds);
+
+        const enrichedLogs = data.map(log => ({
+          ...log,
+          user_profile: profiles?.find(p => p.auth_user_id === log.changed_by)
+        }));
+
         setLogs(enrichedLogs);
+        setTotalCount(count || 0);
       }
     } catch (error) {
       console.error('Error fetching logs:', error);
     } finally {
       setLoading(false);
     }
-  }
+  }, [actionFilter, userFilter, dateFrom, dateTo, page]);
+
+  useEffect(() => {
+    fetchUsers();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    fetchLogs();
+  }, [fetchLogs]);
 
   const totalPages = Math.ceil(totalCount / ITEMS_PER_PAGE);
 

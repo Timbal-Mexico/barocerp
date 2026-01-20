@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -77,38 +77,7 @@ export default function GoalsPage() {
 
   const { user } = useAuth();
 
-  useEffect(() => {
-    loadGoals();
-    const channel = supabase
-      .channel('goals-sales-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sales' },
-        () => {
-          loadGoals();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  async function handleDelete(id: string) {
-    if (!confirm('¿Estás seguro de eliminar este objetivo?')) return;
-    
-    try {
-      const { error } = await supabase.from('goals').delete().eq('id', id);
-      if (error) throw error;
-      loadGoals();
-    } catch (error: any) {
-      console.error('Error deleting goal:', error);
-      alert('Error al eliminar: ' + error.message);
-    }
-  }
-
-  async function loadGoals() {
+  const loadGoals = useCallback(async () => {
     try {
       const { data: goalsData, error: goalsError } = await supabase
         .from('goals')
@@ -367,7 +336,38 @@ export default function GoalsPage() {
     } finally {
       setLoading(false);
     }
+  }, [user]);
+
+  async function handleDelete(id: string) {
+    if (!confirm('¿Estás seguro de eliminar este objetivo?')) return;
+    
+    try {
+      const { error } = await supabase.from('goals').delete().eq('id', id);
+      if (error) throw error;
+      loadGoals();
+    } catch (error: any) {
+      console.error('Error deleting goal:', error);
+      alert('Error al eliminar: ' + error.message);
+    }
   }
+
+  useEffect(() => {
+    loadGoals();
+    const channel = supabase
+      .channel('goals-sales-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sales' },
+        () => {
+          loadGoals();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadGoals]);
 
   const filteredAgentPerformance = useMemo(() => {
     if (!currentUserRole || currentUserRole === 'admin' || currentUserRole === 'manager') {

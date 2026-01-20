@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,14 +44,7 @@ export default function SettingsPage() {
   const [generalLanguage, setGeneralLanguage] = useState('es-MX');
   const [generalTimezone, setGeneralTimezone] = useState('America/Mexico_City');
 
-  useEffect(() => {
-    loadProfile();
-    loadCompany();
-    loadGeneralSettings();
-    loadSettings();
-  }, []);
-
-  async function loadProfile() {
+  const loadProfile = useCallback(async () => {
     if (!user) return;
     try {
       setProfileLoading(true);
@@ -76,7 +69,78 @@ export default function SettingsPage() {
     } finally {
       setProfileLoading(false);
     }
-  }
+  }, [user]);
+
+  const loadCompany = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('company_settings')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+      if (error && error.code !== 'PGRST116') throw error;
+      if (data) {
+        setCompanyName((data as any).name || '');
+        setCompanyTaxId((data as any).tax_id || '');
+        setCompanyEmail((data as any).email || '');
+        setCompanyPhone((data as any).phone || '');
+        setCompanyAddress((data as any).address || '');
+      }
+    } catch (error) {
+      console.error('Error loading company settings:', error);
+    }
+  }, []);
+
+  const loadGeneralSettings = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem('erp-general-settings');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.notifications === 'boolean') {
+        setGeneralNotifications(parsed.notifications);
+      }
+      if (typeof parsed.sounds === 'boolean') {
+        setGeneralSounds(parsed.sounds);
+      }
+      if (typeof parsed.language === 'string') {
+        setGeneralLanguage(parsed.language);
+      }
+      if (typeof parsed.timezone === 'string') {
+        setGeneralTimezone(parsed.timezone);
+      }
+    } catch (error) {
+      console.error('Error loading general settings:', error);
+    }
+  }, []);
+
+  const loadSettings = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('integrations')
+        .select('*')
+        .eq('provider', 'shopify')
+        .single();
+
+      if (error && error.code !== 'PGRST116') throw error;
+
+      if (data) {
+        setIntegrationId(data.id);
+        const config = data.config as any;
+        setShopUrl(config.shop_url || '');
+        setAccessToken(config.access_token || '');
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProfile();
+    loadCompany();
+    loadGeneralSettings();
+    loadSettings();
+  }, [loadProfile, loadCompany, loadGeneralSettings, loadSettings]);
 
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -141,25 +205,7 @@ export default function SettingsPage() {
     }
   }
 
-  async function loadCompany() {
-    try {
-      const { data, error } = await supabase
-        .from('company_settings')
-        .select('*')
-        .limit(1)
-        .maybeSingle();
-      if (error && error.code !== 'PGRST116') throw error;
-      if (data) {
-        setCompanyName((data as any).name || '');
-        setCompanyTaxId((data as any).tax_id || '');
-        setCompanyEmail((data as any).email || '');
-        setCompanyPhone((data as any).phone || '');
-        setCompanyAddress((data as any).address || '');
-      }
-    } catch (error) {
-      console.error('Error loading company settings:', error);
-    }
-  }
+
 
   async function saveCompany(e: React.FormEvent) {
     e.preventDefault();
@@ -183,28 +229,7 @@ export default function SettingsPage() {
     }
   }
 
-  function loadGeneralSettings() {
-    if (typeof window === 'undefined') return;
-    try {
-      const raw = window.localStorage.getItem('erp-general-settings');
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (typeof parsed.notifications === 'boolean') {
-        setGeneralNotifications(parsed.notifications);
-      }
-      if (typeof parsed.sounds === 'boolean') {
-        setGeneralSounds(parsed.sounds);
-      }
-      if (typeof parsed.language === 'string') {
-        setGeneralLanguage(parsed.language);
-      }
-      if (typeof parsed.timezone === 'string') {
-        setGeneralTimezone(parsed.timezone);
-      }
-    } catch (error) {
-      console.error('Error loading general settings:', error);
-    }
-  }
+
 
   function saveGeneralSettings(next: {
     notifications?: boolean;
@@ -227,26 +252,7 @@ export default function SettingsPage() {
     }
   }
 
-  async function loadSettings() {
-    try {
-      const { data, error } = await supabase
-        .from('integrations')
-        .select('*')
-        .eq('provider', 'shopify')
-        .single();
 
-      if (error && error.code !== 'PGRST116') throw error;
-
-      if (data) {
-        setIntegrationId(data.id);
-        const config = data.config as any;
-        setShopUrl(config.shop_url || '');
-        setAccessToken(config.access_token || '');
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-    }
-  }
 
   async function saveSettings(e: React.FormEvent) {
     e.preventDefault();
