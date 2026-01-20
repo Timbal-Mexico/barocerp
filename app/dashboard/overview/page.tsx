@@ -64,8 +64,7 @@ export default function OverviewPage() {
           .gte('created_at', monthStart.toISOString()),
         supabase
           .from('sale_items')
-          .select('quantity, price, product_id, products(name)')
-          .gte('created_at', monthStart.toISOString()),
+          .select('quantity, price, product_id, products(name)'),
         supabase
           .from('goals')
           .select('target_amount')

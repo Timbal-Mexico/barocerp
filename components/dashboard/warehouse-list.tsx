@@ -78,6 +78,34 @@ export function WarehouseList() {
 
   useEffect(() => {
     loadWarehouses();
+    const channel = supabase
+      .channel('inventory-warehouses-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'product_warehouses' },
+        () => {
+          loadWarehouses();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_adjustments' },
+        () => {
+          loadWarehouses();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_transfers' },
+        () => {
+          loadWarehouses();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function loadWarehouses() {

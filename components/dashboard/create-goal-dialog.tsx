@@ -12,6 +12,8 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { toast } from 'sonner';
 
 type Props = {
@@ -25,30 +27,58 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
     month: '',
     target_amount: '',
     channel: 'all',
+    agent_id: '',
+    type: 'global',
   });
   const [loading, setLoading] = useState(false);
+  const [profiles, setProfiles] = useState<{ id: string; full_name: string }[]>([]);
 
   useEffect(() => {
     if (open) {
-      const currentMonth = new Date().toISOString().slice(0, 7);
+      const now = new Date();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const currentMonth = `${now.getFullYear()}-${month}`;
       setFormData({
         month: currentMonth,
         target_amount: '',
         channel: 'all',
+        agent_id: '',
+        type: 'global',
       });
+      loadProfiles();
     }
   }, [open]);
+
+  async function loadProfiles() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .order('full_name');
+    setProfiles(data || []);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
 
     try {
-      const { error } = await supabase.from('goals').insert({
+      const payload: any = {
         month: formData.month,
         target_amount: parseFloat(formData.target_amount),
-        channel: formData.channel,
-      });
+      };
+
+      if (formData.type === 'agent') {
+        if (!formData.agent_id) {
+          throw new Error('Debes seleccionar un agente');
+        }
+        payload.agent_id = formData.agent_id;
+        payload.channel = null; // Agent goals are channel-agnostic for now
+      } else {
+        payload.channel = formData.channel;
+        payload.agent_id = null;
+      }
+
+      const { error } = await supabase.from('goals').insert(payload);
 
       if (error) throw error;
 
@@ -64,7 +94,7 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
     } catch (error: any) {
       console.error('Error creating goal:', error);
       if (error.code === '23505') {
-        toast.error('Ya existe un objetivo para este mes y canal');
+        toast.error('Ya existe un objetivo para este mes y canal/agente');
       } else {
         toast.error('Error al crear el objetivo: ' + error.message);
       }
@@ -79,7 +109,7 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
         <DialogHeader>
           <DialogTitle>Nuevo Objetivo</DialogTitle>
           <DialogDescription>
-            Define un objetivo mensual de ventas para un canal específico o para todos
+            Define un objetivo mensual de ventas global o por agente
           </DialogDescription>
         </DialogHeader>
 
@@ -98,52 +128,100 @@ export function CreateGoalDialog({ open, onOpenChange, onSuccess }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="target_amount">Monto objetivo *</Label>
+            <Label>Tipo de Objetivo</Label>
+            <RadioGroup
+              value={formData.type}
+              onValueChange={(val) => setFormData({ ...formData, type: val })}
+              className="flex gap-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="global" id="global" />
+                <Label htmlFor="global">Global / Canal</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="agent" id="agent" />
+                <Label htmlFor="agent">Por Agente</Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          {formData.type === 'global' ? (
+            <div className="space-y-2">
+              <Label htmlFor="channel">Canal</Label>
+              <Select
+                value={formData.channel}
+                onValueChange={(val) =>
+                  setFormData({ ...formData, channel: val })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un canal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los canales</SelectItem>
+                  <SelectItem value="facebook">Facebook</SelectItem>
+                  <SelectItem value="instagram">Instagram</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="web">Web / E-commerce</SelectItem>
+                  <SelectItem value="organico">Orgánico / Referido</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="agent">Agente *</Label>
+              <Select
+                value={formData.agent_id}
+                onValueChange={(val) =>
+                  setFormData({ ...formData, agent_id: val })
+                }
+                disabled={profiles.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={profiles.length === 0 ? "No hay agentes disponibles" : "Selecciona un agente"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {profiles.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.full_name || profile.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {profiles.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  No se encontraron agentes. Crea usuarios en la sección de perfiles.
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label htmlFor="target">Monto Objetivo ($) *</Label>
             <Input
-              id="target_amount"
+              id="target"
               type="number"
-              step="0.01"
               min="0"
+              step="0.01"
               value={formData.target_amount}
               onChange={(e) =>
                 setFormData({ ...formData, target_amount: e.target.value })
               }
-              placeholder="10000.00"
+              placeholder="0.00"
               required
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="channel">Canal *</Label>
-            <select
-              id="channel"
-              value={formData.channel}
-              onChange={(e) =>
-                setFormData({ ...formData, channel: e.target.value })
-              }
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              required
-            >
-              <option value="all">Todos los canales</option>
-              <option value="facebook">Facebook</option>
-              <option value="instagram">Instagram</option>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="web">Web</option>
-              <option value="organico">Orgánico</option>
-            </select>
-          </div>
-
-          <div className="flex gap-3">
+          <div className="flex justify-end gap-2 pt-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
-              className="flex-1"
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={loading} className="flex-1">
-              {loading ? 'Creando...' : 'Crear Objetivo'}
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Guardando...' : 'Guardar Objetivo'}
             </Button>
           </div>
         </form>

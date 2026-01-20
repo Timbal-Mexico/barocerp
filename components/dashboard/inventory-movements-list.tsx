@@ -51,6 +51,34 @@ export function InventoryMovementsList() {
 
   useEffect(() => {
     loadMovements();
+    const channel = supabase
+      .channel('inventory-movements-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_movements' },
+        () => {
+          loadMovements();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_adjustments' },
+        () => {
+          loadMovements();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_transfers' },
+        () => {
+          loadMovements();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function loadMovements() {

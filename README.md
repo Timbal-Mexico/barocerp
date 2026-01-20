@@ -48,6 +48,20 @@ Sistema ERP completo con funcionalidades de CRM, Inventarios y Business Intellig
 - Resumen del mes actual
 - Historial de objetivos
 
+### Generación de Números de Orden
+El sistema implementa una numeración secuencial para los pedidos con el formato `BR1940-XXXX`.
+
+1. **Secuencia de Base de Datos**: Se utiliza una secuencia PostgreSQL (`sales_order_number_seq`) para garantizar la unicidad y el incremento atómico.
+2. **Función RPC**: La función `get_next_order_sequence` expone el siguiente valor de la secuencia de manera segura.
+3. **Frontend (Creación)**:
+   - Al abrir el modal de venta, se consulta el siguiente número disponible.
+   - El prefijo "BR1940" es fijo.
+   - El número secuencial se muestra en un campo editable (inicialmente prellenado).
+   - El usuario puede modificar el número manualmente si es necesario.
+   - Validación: Se verifica que el formato final sea `BR1940-XXXX` (o `ORD-XXXX-XXXX` por compatibilidad histórica) antes de guardar.
+4. **Persistencia**: El número completo se guarda en la columna `order_number` de la tabla `sales`.
+5. **Edición**: Al editar una venta, el número de orden se muestra pero el campo está deshabilitado para preservar la integridad del registro.
+
 ## Stack Tecnológico
 
 - **Frontend**: Next.js 13 (App Router), React

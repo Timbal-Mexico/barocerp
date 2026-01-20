@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { CreateProductDialog } from '@/components/dashboard/create-product-dialog';
 import { EditProductDialog } from '@/components/dashboard/edit-product-dialog';
 import { ProductThumbnail } from '@/components/dashboard/product-thumbnail';
+import { ProductDetailDialog } from '@/components/dashboard/product-detail-dialog';
 
 type Product = {
   id: string;
@@ -49,6 +50,8 @@ export default function InventoryPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [stockFilter, setStockFilter] = useState('all');
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+  const [showDetail, setShowDetail] = useState(false);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -121,6 +124,37 @@ export default function InventoryPage() {
   useEffect(() => {
     filterProducts();
   }, [filterProducts]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('inventory-products-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'product_warehouses' },
+        () => {
+          loadProducts();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_adjustments' },
+        () => {
+          loadProducts();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'inventory_transfers' },
+        () => {
+          loadProducts();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [loadProducts]);
 
   const totalStock = filteredProducts.reduce((sum, product) => sum + product.stock, 0);
 
@@ -278,7 +312,15 @@ export default function InventoryPage() {
                         <ProductThumbnail src={product.image_url} alt={product.name} />
                       </TableCell>
                       <TableCell className="font-medium">
-                        {product.name}
+                        <button
+                          className="text-slate-900 hover:underline"
+                          onClick={() => {
+                            setDetailProduct(product);
+                            setShowDetail(true);
+                          }}
+                        >
+                          {product.name}
+                        </button>
                         {product.warehouse_count > 1 && (
                           <Badge variant="secondary" className="ml-2 text-xs">
                             Multi-almacén
@@ -359,6 +401,21 @@ export default function InventoryPage() {
           open={true}
           onOpenChange={(open) => !open && setEditingProduct(null)}
           onSuccess={loadProducts}
+        />
+      )}
+
+      {detailProduct && (
+        <ProductDetailDialog
+          productId={detailProduct.id}
+          name={detailProduct.name}
+          price={detailProduct.price}
+          stock={detailProduct.stock}
+          imageUrl={detailProduct.image_url}
+          open={showDetail}
+          onOpenChange={(open) => {
+            setShowDetail(open);
+            if (!open) setDetailProduct(null);
+          }}
         />
       )}
     </div>

@@ -8,7 +8,7 @@ import { Toaster } from 'sonner';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'ERP Baroc - Sistema de Gestión',
+  title: 'ERP-Commerce - Sistema de Gestión',
   description: 'Sistema ERP con CRM, Inventarios y Business Intelligence',
   openGraph: {
     images: [

@@ -72,8 +72,8 @@ BEGIN
   SELECT id INTO v_product_id FROM products WHERE sku = 'LAP-001' LIMIT 1;
 
   IF v_lead_id IS NOT NULL AND v_product_id IS NOT NULL THEN
-    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at)
-    VALUES ('ORD-2026-0001', v_lead_id, 'facebook', 1299.99, NOW() - INTERVAL '5 days')
+    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at, agent_name)
+    VALUES ('ORD-2026-0001', v_lead_id, 'facebook', 1299.99, NOW() - INTERVAL '5 days', 'Carlos Ventas')
     ON CONFLICT (order_number) DO NOTHING
     RETURNING id INTO v_sale_id;
 
@@ -88,8 +88,8 @@ BEGIN
   SELECT id INTO v_lead_id FROM leads WHERE email = 'maria.garcia@email.com' LIMIT 1;
 
   IF v_lead_id IS NOT NULL THEN
-    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at)
-    VALUES ('ORD-2026-0002', v_lead_id, 'instagram', 599.98, NOW() - INTERVAL '3 days')
+    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at, agent_name)
+    VALUES ('ORD-2026-0002', v_lead_id, 'instagram', 599.98, NOW() - INTERVAL '3 days', 'Ana Comercial')
     ON CONFLICT (order_number) DO NOTHING
     RETURNING id INTO v_sale_id;
 
@@ -114,8 +114,8 @@ BEGIN
   SELECT id INTO v_lead_id FROM leads WHERE email = 'carlos.lopez@email.com' LIMIT 1;
 
   IF v_lead_id IS NOT NULL THEN
-    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at)
-    VALUES ('ORD-2026-0003', v_lead_id, 'whatsapp', 349.98, NOW() - INTERVAL '2 days')
+    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at, agent_name)
+    VALUES ('ORD-2026-0003', v_lead_id, 'whatsapp', 349.98, NOW() - INTERVAL '2 days', 'Carlos Ventas')
     ON CONFLICT (order_number) DO NOTHING
     RETURNING id INTO v_sale_id;
 
@@ -140,8 +140,8 @@ BEGIN
   SELECT id INTO v_lead_id FROM leads WHERE email = 'ana.martinez@email.com' LIMIT 1;
 
   IF v_lead_id IS NOT NULL THEN
-    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at)
-    VALUES ('ORD-2026-0004', v_lead_id, 'web', 179.98, NOW() - INTERVAL '1 day')
+    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at, agent_name)
+    VALUES ('ORD-2026-0004', v_lead_id, 'web', 179.98, NOW() - INTERVAL '1 day', 'Ana Comercial')
     ON CONFLICT (order_number) DO NOTHING
     RETURNING id INTO v_sale_id;
 
@@ -166,8 +166,8 @@ BEGIN
   SELECT id INTO v_lead_id FROM leads WHERE email = 'pedro.sanchez@email.com' LIMIT 1;
 
   IF v_lead_id IS NOT NULL THEN
-    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at)
-    VALUES ('ORD-2026-0005', v_lead_id, 'whatsapp', 79.99, NOW())
+    INSERT INTO sales (order_number, lead_id, channel, total_amount, created_at, agent_name)
+    VALUES ('ORD-2026-0005', v_lead_id, 'whatsapp', 79.99, NOW(), 'Carlos Ventas')
     ON CONFLICT (order_number) DO NOTHING
     RETURNING id INTO v_sale_id;
 

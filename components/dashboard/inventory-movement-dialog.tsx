@@ -61,6 +61,7 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
   const [quantity, setQuantity] = useState('');
   const [reason, setReason] = useState('');
   const [notes, setNotes] = useState('');
+  const [adjustmentDirection, setAdjustmentDirection] = useState<'in' | 'out'>('in');
 
   // Derived state
   const currentStock = productWarehouses.find(
@@ -114,6 +115,7 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
     setQuantity('');
     setReason('');
     setNotes('');
+    setAdjustmentDirection('in');
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -121,6 +123,17 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
     setLoading(true);
 
     try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        alert('Debes iniciar sesión para registrar movimientos de inventario.');
+        setLoading(false);
+        return;
+      }
+      if (!selectedProductId) {
+        throw new Error('Selecciona un producto');
+      }
       const qty = parseInt(quantity);
       if (isNaN(qty) || qty <= 0) throw new Error('La cantidad debe ser mayor a 0');
 
@@ -148,41 +161,21 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
           pwId = newPw.id;
         }
 
-        // Determine adjustment quantity (positive or negative based on reason)
-        // For 'adjustment' type, we usually mean ADD or SUBTRACT. 
-        // Let's assume the user inputs positive number and reason dictates sign? 
-        // Or simpler: allow negative numbers?
-        // Let's stick to: "Ajuste de entrada" vs "Ajuste de salida" or just let them sign it.
-        // But user requirement says "CRUD...". 
-        // Let's assume input can be negative for removal.
-        // Wait, standard UI usually has "Add" / "Remove" or signed input.
-        // I will allow signed input or handle it via "Type". 
-        // Let's use signed input for simplicity in this logic, but maybe UI should be clearer.
-        // Actually, let's look at migration: validate_inventory_movement checks quantity < 0.
-        
-        const finalQty = qty; // User enters signed value? Or we add a "Type" selector?
-        // Let's add a "Type" selector in UI: "Entrada" (positive), "Salida" (negative)
-        
-        const type = reason === 'loss' || reason === 'correction_negative' ? -1 : 1;
-        // Wait, I need a better way to capture sign.
-        // I'll add a radio or select for "Operation": Add / Remove
-        
-        // For now, let's assume the user inputs the adjustment quantity directly (can be negative).
-        // But better UX: Input positive number, select "Entrada" or "Salida".
-        
-        const isOutput = reason.startsWith('out_');
-        const adjustmentQty = isOutput ? -qty : qty;
+        const sign = adjustmentDirection === 'out' ? -1 : 1;
+        const adjustmentQty = sign * qty;
 
         const { error } = await supabase.from('inventory_adjustments').insert({
           product_warehouse_id: pwId,
           adjustment_quantity: adjustmentQty,
           reason: reason,
           notes: notes,
+          created_by: user.id,
         });
 
         if (error) throw error;
 
       } else { // Transfer
+        if (!selectedProductId) throw new Error('Selecciona un producto');
         if (!selectedWarehouseId || !targetWarehouseId) throw new Error('Selecciona almacenes de origen y destino');
         if (selectedWarehouseId === targetWarehouseId) throw new Error('Los almacenes deben ser diferentes');
 
@@ -209,17 +202,20 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
             if (createError) throw createError;
             targetPwId = newPw.id;
         }
+        if (!targetPwId) throw new Error('No se pudo crear relación destino');
 
         if (!sourcePw) throw new Error('El producto no existe en el almacén de origen');
         if (sourcePw.quantity < qty) throw new Error('Stock insuficiente en origen');
 
-        const { error } = await supabase.from('inventory_transfers').insert({
+        const { error } = await supabase
+          .from('inventory_transfers')
+          .insert({
           from_product_warehouse_id: sourcePw.id,
           to_product_warehouse_id: targetPwId,
           quantity: qty,
           reason: reason,
           status: 'completed', // Auto-complete for now
-          created_by: (await supabase.auth.getUser()).data.user?.id
+          created_by: user.id
         });
 
         if (error) throw error;
@@ -311,6 +307,21 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
+                <Label>Tipo</Label>
+                <Select
+                  value={adjustmentDirection}
+                  onValueChange={(v: 'in' | 'out') => setAdjustmentDirection(v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="in">Entrada (+)</SelectItem>
+                    <SelectItem value="out">Salida (-)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
                 <Label>Cantidad</Label>
                 <Input
                   type="number"
@@ -321,7 +332,9 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
                   required
                 />
               </div>
+            </div>
 
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Motivo</Label>
                 <Select value={reason} onValueChange={setReason}>
@@ -331,12 +344,12 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
                   <SelectContent>
                     {activeTab === 'adjustment' ? (
                       <>
-                        <SelectItem value="in_purchase">Compra (Entrada)</SelectItem>
-                        <SelectItem value="in_return">Devolución (Entrada)</SelectItem>
-                        <SelectItem value="in_adjustment">Ajuste + (Entrada)</SelectItem>
-                        <SelectItem value="out_damage">Daño (Salida)</SelectItem>
-                        <SelectItem value="out_loss">Pérdida (Salida)</SelectItem>
-                        <SelectItem value="out_adjustment">Ajuste - (Salida)</SelectItem>
+                        <SelectItem value="purchase">Compra</SelectItem>
+                        <SelectItem value="return">Devolución</SelectItem>
+                        <SelectItem value="manual_adjustment">Ajuste Manual</SelectItem>
+                        <SelectItem value="damage">Daño</SelectItem>
+                        <SelectItem value="loss">Pérdida</SelectItem>
+                        <SelectItem value="other_adjustment">Otro</SelectItem>
                       </>
                     ) : (
                       <>
@@ -347,6 +360,13 @@ export function InventoryMovementDialog({ open, onOpenChange, onSuccess }: Props
                     )}
                   </SelectContent>
                 </Select>
+                  {activeTab === 'adjustment' && reason && (
+                    <p className="text-xs text-muted-foreground">
+                      {adjustmentDirection === 'in'
+                        ? 'Este ajuste SUMA stock en el almacén.'
+                        : 'Este ajuste RESTA stock del almacén.'}
+                    </p>
+                  )}
               </div>
             </div>
 

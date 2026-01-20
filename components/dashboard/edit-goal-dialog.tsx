@@ -12,12 +12,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 
 type Goal = {
   id: string;
   month: string;
   target_amount: number;
   channel: string | null;
+  agent_id?: string | null;
 };
 
 type Props = {
@@ -32,16 +35,33 @@ export function EditGoalDialog({ open, onOpenChange, onSuccess, goal }: Props) {
     month: '',
     target_amount: '',
     channel: 'all',
+    agent_id: '',
+    type: 'global',
   });
   const [loading, setLoading] = useState(false);
+  const [profiles, setProfiles] = useState<{ id: string; full_name: string }[]>([]);
 
   useEffect(() => {
+    async function loadProfiles() {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .order('full_name');
+      setProfiles(data || []);
+    }
+
     if (goal && open) {
+      const isAgentGoal = !!goal.agent_id;
       setFormData({
         month: goal.month,
         target_amount: goal.target_amount.toString(),
         channel: goal.channel || 'all',
+        agent_id: goal.agent_id || '',
+        type: isAgentGoal ? 'agent' : 'global',
       });
+      if (isAgentGoal) {
+        loadProfiles();
+      }
     }
   }, [goal, open]);
 
@@ -51,13 +71,25 @@ export function EditGoalDialog({ open, onOpenChange, onSuccess, goal }: Props) {
     setLoading(true);
 
     try {
+      const payload: any = {
+        month: formData.month,
+        target_amount: parseFloat(formData.target_amount),
+      };
+
+      if (formData.type === 'agent') {
+        if (!formData.agent_id) {
+          throw new Error('Debes seleccionar un agente');
+        }
+        payload.agent_id = formData.agent_id;
+        payload.channel = null;
+      } else {
+        payload.channel = formData.channel;
+        payload.agent_id = null;
+      }
+
       const { error } = await supabase
         .from('goals')
-        .update({
-          month: formData.month,
-          target_amount: parseFloat(formData.target_amount),
-          channel: formData.channel,
-        })
+        .update(payload)
         .eq('id', goal.id);
 
       if (error) throw error;
@@ -82,7 +114,7 @@ export function EditGoalDialog({ open, onOpenChange, onSuccess, goal }: Props) {
         <DialogHeader>
           <DialogTitle>Editar Objetivo</DialogTitle>
           <DialogDescription>
-            Modifica el objetivo de ventas
+            Modifica el objetivo de ventas global o por agente
           </DialogDescription>
         </DialogHeader>
 
@@ -101,6 +133,70 @@ export function EditGoalDialog({ open, onOpenChange, onSuccess, goal }: Props) {
           </div>
 
           <div className="space-y-2">
+            <Label>Tipo de Objetivo</Label>
+            <RadioGroup
+              value={formData.type}
+              onValueChange={(val) => setFormData({ ...formData, type: val })}
+              className="flex gap-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="global" id="edit-global" />
+                <Label htmlFor="edit-global">Global / Canal</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="agent" id="edit-agent" />
+                <Label htmlFor="edit-agent">Por Agente</Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          {formData.type === 'global' ? (
+            <div className="space-y-2">
+              <Label htmlFor="edit-channel">Canal</Label>
+              <Select
+                value={formData.channel}
+                onValueChange={(val) =>
+                  setFormData({ ...formData, channel: val })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un canal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los canales</SelectItem>
+                  <SelectItem value="facebook">Facebook</SelectItem>
+                  <SelectItem value="instagram">Instagram</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="web">Web / E-commerce</SelectItem>
+                  <SelectItem value="organico">Orgánico / Referido</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="edit-agent">Agente *</Label>
+              <Select
+                value={formData.agent_id}
+                onValueChange={(val) =>
+                  setFormData({ ...formData, agent_id: val })
+                }
+                disabled={profiles.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={profiles.length === 0 ? "No hay agentes disponibles" : "Selecciona un agente"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {profiles.map((profile) => (
+                    <SelectItem key={profile.id} value={profile.id}>
+                      {profile.full_name || profile.id}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          <div className="space-y-2">
             <Label htmlFor="edit-target_amount">Monto objetivo *</Label>
             <Input
               id="edit-target_amount"
@@ -114,26 +210,6 @@ export function EditGoalDialog({ open, onOpenChange, onSuccess, goal }: Props) {
               placeholder="10000.00"
               required
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="edit-channel">Canal *</Label>
-            <select
-              id="edit-channel"
-              value={formData.channel}
-              onChange={(e) =>
-                setFormData({ ...formData, channel: e.target.value })
-              }
-              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              required
-            >
-              <option value="all">Todos los canales</option>
-              <option value="facebook">Facebook</option>
-              <option value="instagram">Instagram</option>
-              <option value="whatsapp">WhatsApp</option>
-              <option value="web">Web</option>
-              <option value="organico">Orgánico</option>
-            </select>
           </div>
 
           <div className="flex gap-3">

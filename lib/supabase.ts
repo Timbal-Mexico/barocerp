@@ -45,6 +45,7 @@ export type Database = {
           phone: string | null;
           interest_product_id: string | null;
           contact_channel: 'facebook' | 'instagram' | 'whatsapp' | 'web' | 'otro';
+          status: 'new' | 'contacted' | 'interested' | 'qualified' | 'closed' | 'lost';
           created_at: string;
         };
         Insert: {
@@ -54,6 +55,7 @@ export type Database = {
           phone?: string | null;
           interest_product_id?: string | null;
           contact_channel: 'facebook' | 'instagram' | 'whatsapp' | 'web' | 'otro';
+          status?: 'new' | 'contacted' | 'interested' | 'qualified' | 'closed' | 'lost';
           created_at?: string;
         };
         Update: {
@@ -63,6 +65,7 @@ export type Database = {
           phone?: string | null;
           interest_product_id?: string | null;
           contact_channel?: 'facebook' | 'instagram' | 'whatsapp' | 'web' | 'otro';
+          status?: 'new' | 'contacted' | 'interested' | 'qualified' | 'closed' | 'lost';
           created_at?: string;
         };
       };

@@ -9,7 +9,7 @@ BEGIN
   ) THEN
     CREATE POLICY "Public Access erpcommerce"
     ON storage.objects FOR SELECT
-    USING ( bucket_id = 'erpcommerce' );
+    USING ( bucket_id = 'erpcommerce_files' );
   END IF;
 END$$;
 
@@ -25,7 +25,7 @@ BEGIN
     CREATE POLICY "Authenticated Upload erpcommerce"
     ON storage.objects FOR INSERT
     TO authenticated
-    WITH CHECK ( bucket_id = 'erpcommerce' );
+    WITH CHECK ( bucket_id = 'erpcommerce_files' );
   END IF;
 END$$;
 
@@ -41,7 +41,7 @@ BEGIN
     CREATE POLICY "Authenticated Update erpcommerce"
     ON storage.objects FOR UPDATE
     TO authenticated
-    USING ( bucket_id = 'erpcommerce' );
+    USING ( bucket_id = 'erpcommerce_files' );
   END IF;
 END$$;
 
@@ -57,6 +57,6 @@ BEGIN
     CREATE POLICY "Authenticated Delete erpcommerce"
     ON storage.objects FOR DELETE
     TO authenticated
-    USING ( bucket_id = 'erpcommerce' );
+    USING ( bucket_id = 'erpcommerce_files' );
   END IF;
 END$$;

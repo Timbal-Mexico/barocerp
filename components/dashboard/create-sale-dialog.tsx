@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import {
   Dialog,
@@ -12,11 +12,25 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { X, Plus } from 'lucide-react';
+import { X, Plus, Check, ChevronsUpDown, Search as SearchIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { showPartyNotification } from '@/lib/party-mode';
 import { toast } from 'sonner';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 
 type Lead = {
   id: string;
@@ -63,12 +77,23 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
   const [selectedWarehouse, setSelectedWarehouse] = useState('');
   const [deliveryCity, setDeliveryCity] = useState('');
   const [agentName, setAgentName] = useState('');
-  const [saleDate, setSaleDate] = useState(''); // YYYY-MM-DDTHH:mm
+  const [saleDate, setSaleDate] = useState('');
+  const [orderNumberSeq, setOrderNumberSeq] = useState('');
 
   const [items, setItems] = useState<SaleItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [promotionType, setPromotionType] = useState('none');
   const [discountValue, setDiscountValue] = useState(0);
+
+  // Search states
+  const [openLead, setOpenLead] = useState(false);
+  const [searchLead, setSearchLead] = useState("");
+  const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
+  const [creatingLead, setCreatingLead] = useState(false);
+
+  const [openProduct, setOpenProduct] = useState(false);
+  const [searchProduct, setSearchProduct] = useState("");
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -79,8 +104,9 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
       setSelectedWarehouse('');
       setDeliveryCity('');
       setAgentName('');
+      setSearchLead('');
+      setSearchProduct('');
       
-      // Set default date to now, adjusted for local timezone
       const now = new Date();
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
       setSaleDate(now.toISOString().slice(0, 16));
@@ -88,19 +114,92 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
       setItems([]);
       setPromotionType('none');
       setDiscountValue(0);
+
+      (async () => {
+        try {
+          const { data: seq, error } = await supabase.rpc('get_next_order_sequence');
+          if (error) throw error;
+          if (seq) {
+            setOrderNumberSeq(String(seq).padStart(4, '0'));
+          }
+        } catch (err) {
+          console.error("Error fetching next order sequence", err);
+        }
+      })();
     }
   }, [open]);
 
+  // Lead search effect
+  useEffect(() => {
+    const searchLeads = async () => {
+      if (!searchLead) {
+        setFilteredLeads(leads.slice(0, 50));
+        return;
+      }
+      
+      // Local filter if we have few leads, otherwise API
+      // Since requirements ask for API connection for searches:
+      try {
+        const { data, error } = await supabase
+          .from('leads')
+          .select('id, name, email')
+          .ilike('name', `%${searchLead}%`)
+          .order('name')
+          .limit(20);
+          
+        if (data) setFilteredLeads(data);
+      } catch (err) {
+        console.error("Error searching leads", err);
+      }
+    };
+
+    const timer = setTimeout(searchLeads, 300);
+    return () => clearTimeout(timer);
+  }, [searchLead, leads]);
+
+  // Product search effect
+  useEffect(() => {
+    const searchProducts = async () => {
+      if (!searchProduct) {
+        setFilteredProducts(products.slice(0, 50));
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('products')
+          .select('*')
+          .eq('active', true)
+          .ilike('name', `%${searchProduct}%`)
+          .order('name')
+          .limit(20);
+
+        if (data) setFilteredProducts(data);
+      } catch (err) {
+         console.error("Error searching products", err);
+      }
+    };
+
+    const timer = setTimeout(searchProducts, 300);
+    return () => clearTimeout(timer);
+  }, [searchProduct, products]);
+
   async function loadData() {
     const [leadsResult, productsResult, warehousesResult, agentsResult] = await Promise.all([
-      supabase.from('leads').select('id, name, email').order('name'),
-      supabase.from('products').select('*').eq('active', true).order('name'),
+      supabase.from('leads').select('id, name, email').order('name').limit(50),
+      supabase.from('products').select('*').eq('active', true).order('name').limit(50),
       supabase.from('warehouses').select('id, name').order('name'),
       supabase.from('profiles').select('id, full_name').order('full_name'),
     ]);
 
-    if (leadsResult.data) setLeads(leadsResult.data);
-    if (productsResult.data) setProducts(productsResult.data);
+    if (leadsResult.data) {
+      setLeads(leadsResult.data);
+      setFilteredLeads(leadsResult.data);
+    }
+    if (productsResult.data) {
+      setProducts(productsResult.data);
+      setFilteredProducts(productsResult.data);
+    }
     if (warehousesResult.data) {
       setWarehouses(warehousesResult.data);
       // Select first warehouse by default if available
@@ -111,9 +210,53 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
     if (agentsResult.data) setAgents(agentsResult.data as any);
   }
 
-  function addItem() {
-    setItems([...items, { product_id: '', quantity: 1, price: 0, discount: 0 }]);
+  async function createNewLead() {
+    if (!searchLead) return;
+    setCreatingLead(true);
+    try {
+      const { data, error } = await supabase
+        .from('leads')
+        .insert({ 
+          name: searchLead,
+          contact_channel: channel // Default to current selected channel in the form
+        })
+        .select()
+        .single();
+        
+      if (error) throw error;
+      if (data) {
+        setLeads([...leads, data]);
+        setFilteredLeads([...filteredLeads, data]);
+        setSelectedLead(data.id);
+        setOpenLead(false);
+        setSearchLead("");
+        toast.success(`Lead "${data.name}" creado correctamente`);
+      }
+    } catch (error: any) {
+      toast.error("Error creando lead: " + error.message);
+    } finally {
+      setCreatingLead(false);
+    }
   }
+
+  function addProduct(product: Product) {
+    // Check if already exists?
+    // Requirement says "Allow multiple selection", but usually you don't add same product twice as separate rows, 
+    // instead you increase quantity. But let's just add a new row for simplicity and flexibility.
+    
+    setItems(prev => [...prev, { 
+      product_id: product.id, 
+      quantity: 1, 
+      price: product.price, 
+      discount: 0 
+    }]);
+    
+    // Don't close popover to allow multiple selection
+    // But maybe clear search?
+    // setSearchProduct(""); 
+    toast.success(`Producto "${product.name}" agregado`);
+  }
+
 
   function removeItem(index: number) {
     setItems(items.filter((_, i) => i !== index));
@@ -121,18 +264,10 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
 
   function updateItem(index: number, field: keyof SaleItem, value: string | number) {
     const newItems = [...items];
-    if (field === 'product_id') {
-      newItems[index].product_id = value as string;
-      const product = products.find((p) => p.id === value);
-      if (product) {
-        newItems[index].price = product.price;
-      }
-    } else if (field === 'quantity') {
+    if (field === 'quantity') {
       newItems[index].quantity = value as number;
     } else if (field === 'price') {
       newItems[index].price = value as number;
-    } else if (field === 'discount') {
-      newItems[index].discount = value as number;
     }
 
     setItems(newItems);
@@ -204,26 +339,15 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
       }
 
       const totalAmount = calculateTotal();
+      const seq = orderNumberSeq.trim() || '0001';
+      const orderNumber = `BR${seq}`;
 
-      // Generate sequential order number: NNNN-BR starting at 1938
-      let nextSeq = 1938;
-      const { data: lastSale } = await supabase
-        .from('sales')
-        .select('order_number, created_at')
-        .like('order_number', '%-BR')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (lastSale?.order_number) {
-        const match = String(lastSale.order_number).match(/^(\d+)-BR$/);
-        if (match) {
-          const lastNum = parseInt(match[1], 10);
-          if (!isNaN(lastNum) && lastNum >= 1938) {
-            nextSeq = lastNum + 1;
-          }
-        }
+      // Validate order number format (client-side)
+      if (!/^BR\d+$/.test(orderNumber)) {
+        toast.error('Error interno: Formato de número de orden inválido');
+        setLoading(false);
+        return;
       }
-      const orderNumber = `${nextSeq}-BR`;
 
       // Try to include promotion fields if they exist in DB (using any to bypass strict type check for now)
       const saleData: any = {
@@ -299,6 +423,24 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="order-number">Número de orden</Label>
+              <div className="flex items-center gap-2">
+               
+               {/* <span className="text-sm font-medium text-slate-900 bg-slate-100 px-3 py-2 rounded-md border border-slate-200">
+                  BR
+                </span>
+                */}
+                <Input
+                  id="order-number"
+                  type="text"
+                  value={orderNumberSeq}
+                  onChange={(e) => setOrderNumberSeq(e.target.value.replace(/\D/g, ''))}
+                  className="flex-1 bg-white text-slate-900"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="promotion">Tipo de descuento</Label>
               <Select
                 value={promotionType}
@@ -332,39 +474,97 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
               )}
             </div>
             <div className="space-y-2">
-            <Label htmlFor="agent">Agente de ventas</Label>
-            <Select
-              value={agentName}
-              onValueChange={setAgentName}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar agente" />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((agent) => (
-                  <SelectItem key={agent.id} value={agent.full_name || agent.id}>
-                    {agent.full_name || 'Usuario ' + agent.id.slice(0, 4)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <Label htmlFor="agent">Agente de ventas</Label>
+              <Select
+                value={agentName}
+                onValueChange={setAgentName}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar agente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {agents.map((agent) => (
+                    <SelectItem key={agent.id} value={agent.full_name || agent.id}>
+                      {agent.full_name || 'Usuario ' + agent.id.slice(0, 4)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             <div className="space-y-2">
-              <Label htmlFor="lead">Lead (opcional)</Label>
-              <select
-                id="lead"
-                value={selectedLead}
-                onChange={(e) => setSelectedLead(e.target.value)}
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              >
-                <option value="">Sin lead</option>
-                {leads.map((lead) => (
-                  <option key={lead.id} value={lead.id}>
-                    {lead.name} {lead.email ? `(${lead.email})` : ''}
-                  </option>
-                ))}
-              </select>
+              <Label>Lead / Cliente</Label>
+              <Popover open={openLead} onOpenChange={setOpenLead}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={openLead}
+                    className="w-full justify-between"
+                  >
+                    {selectedLead
+                      ? leads.find((lead) => lead.id === selectedLead)?.name || "Lead seleccionado"
+                      : "Seleccionar lead..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[400px] p-0" align="start">
+                  <Command shouldFilter={false}> 
+                    <CommandInput placeholder="Buscar lead..." value={searchLead} onValueChange={setSearchLead} />
+                    <CommandList>
+                       {creatingLead ? (
+                          <CommandItem disabled>Creando lead...</CommandItem>
+                       ) : (
+                         <>
+                           <CommandEmpty>
+                             <div className="p-2">
+                               <p className="text-sm text-muted-foreground mb-2">
+                                 No se encontró {searchLead}
+                               </p>
+                               {searchLead && (
+                                 <Button
+                                   size="sm"
+                                   variant="outline"
+                                   className="w-full"
+                                   onClick={createNewLead}
+                                 >
+                                   <Plus className="mr-2 h-4 w-4" /> Crear {searchLead}
+                                 </Button>
+                               )}
+                             </div>
+                           </CommandEmpty>
+                           <CommandGroup>
+                             {filteredLeads.map((lead) => (
+                               <CommandItem
+                                 key={lead.id}
+                                 value={lead.name}
+                                 onSelect={() => {
+                                   // Ensure lead is in the main list so it displays correctly
+                                   if (!leads.find(l => l.id === lead.id)) {
+                                      setLeads([...leads, lead]);
+                                   }
+                                   setSelectedLead(lead.id === selectedLead ? "" : lead.id);
+                                   setOpenLead(false);
+                                   setSearchLead("");
+                                 }}
+                               >
+                                 <Check
+                                   className={cn(
+                                     "mr-2 h-4 w-4",
+                                     selectedLead === lead.id ? "opacity-100" : "opacity-0"
+                                   )}
+                                 />
+                                 {lead.name}
+                                 {lead.email && <span className="ml-2 text-muted-foreground text-xs">({lead.email})</span>}
+                               </CommandItem>
+                             ))}
+                           </CommandGroup>
+                         </>
+                       )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
 
             <div className="space-y-2">
@@ -425,70 +625,95 @@ export function CreateSaleDialog({ open, onOpenChange, onSuccess }: Props) {
           </div>
 
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label>Productos</Label>
-              <Button type="button" variant="outline" size="sm" onClick={addItem}>
-                <Plus className="mr-2 h-4 w-4" />
-                Agregar Producto
-              </Button>
+            <div className="flex flex-col gap-2">
+                <Label>Productos</Label>
+                <Popover open={openProduct} onOpenChange={setOpenProduct}>
+                    <PopoverTrigger asChild>
+                        <Button variant="outline" role="combobox" className="w-full justify-between text-muted-foreground">
+                            <span className="flex items-center">
+                                <SearchIcon className="mr-2 h-4 w-4" />
+                                Buscar y agregar productos...
+                            </span>
+                        </Button>
+                    </PopoverTrigger>
+                     <PopoverContent className="w-[500px] p-0" align="start">
+                        <Command shouldFilter={false}>
+                            <CommandInput placeholder="Buscar producto..." value={searchProduct} onValueChange={setSearchProduct} />
+                            <CommandList>
+                                <CommandEmpty>No se encontraron productos.</CommandEmpty>
+                                <CommandGroup>
+                                    {filteredProducts.map((product) => (
+                                        <CommandItem
+                                            key={product.id}
+                                            value={product.name}
+                                            onSelect={() => {
+                                                if (!products.find(p => p.id === product.id)) {
+                                                   setProducts([...products, product]);
+                                                }
+                                                addProduct(product);
+                                            }}
+                                        >
+                                            <div className="flex flex-col w-full">
+                                                <span>{product.name}</span>
+                                                <span className="text-xs text-muted-foreground flex justify-between mt-1">
+                                                   <span>SKU: {product.sku}</span>
+                                                   <span>${product.price} | Stock: {product.stock}</span>
+                                                </span>
+                                            </div>
+                                            <Plus className="ml-2 h-4 w-4 shrink-0" />
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                            </CommandList>
+                        </Command>
+                    </PopoverContent>
+                </Popover>
             </div>
 
-            {items.map((item, index) => (
-              <div key={index} className="flex gap-2 items-start">
-                <div className="flex-1">
-                  <select
-                    className="flex h-10 w-full items-center justify-between rounded-md border border-slate-200 bg-white px-3 py-2 text-sm ring-offset-white placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-950 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    value={item.product_id}
-                    onChange={(e) =>
-                      updateItem(index, 'product_id', e.target.value)
-                    }
-                    required
-                  >
-                    <option value="">Seleccionar producto...</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name} (${product.price}) - Stock: {product.stock}
-                      </option>
-                    ))}
-                  </select>
+            <div className="space-y-2">
+              {items.map((item, index) => {
+                const product = products.find(p => p.id === item.product_id);
+                return (
+                  <div key={index} className="flex gap-2 items-center border p-3 rounded-md bg-slate-50">
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{product?.name || 'Producto desconocido'}</div>
+                      <div className="text-xs text-muted-foreground">SKU: {product?.sku}</div>
+                    </div>
+                    <div className="w-20">
+                      <Input
+                        type="number"
+                        min="1"
+                        className="h-8"
+                        placeholder="Cant."
+                        value={item.quantity}
+                        onChange={(e) =>
+                          updateItem(index, 'quantity', Number(e.target.value))
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="w-24 text-right text-sm font-medium">
+                      ${(item.price * item.quantity).toFixed(2)}
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => removeItem(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                );
+              })}
+            
+              {items.length === 0 && (
+                <div className="text-center py-8 text-slate-500 border-2 border-dashed rounded-md">
+                  No hay productos agregados
                 </div>
-                <div className="w-20">
-                  <Input
-                    type="number"
-                    min="1"
-                    placeholder="Cant."
-                    value={item.quantity}
-                    onChange={(e) =>
-                      updateItem(index, 'quantity', Number(e.target.value))
-                    }
-                    required
-                  />
-                </div>
-                <div className="w-24">
-                   <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="Desc."
-                    value={item.discount || ''}
-                    onChange={(e) =>
-                      updateItem(index, 'discount', Number(e.target.value))
-                    }
-                  />
-                </div>
-                <div className="w-24 pt-2 text-right text-sm font-medium">
-                  ${((item.price - (item.discount || 0)) * item.quantity).toFixed(2)}
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeItem(index)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end text-lg font-bold">

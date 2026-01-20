@@ -99,6 +99,49 @@ CREATE TABLE IF NOT EXISTS goals (
   UNIQUE(month, channel)
 );
 
+-- TABLA: companies
+-- Empresas a las que pueden pertenecer usuarios y experiencias
+CREATE TABLE IF NOT EXISTS companies (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL UNIQUE,
+  phone text,
+  email text,
+  address text,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- TABLA: user_profiles
+-- Perfiles extendidos de usuario ligados a auth.users
+CREATE TABLE IF NOT EXISTS user_profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  auth_user_id uuid NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  company_id uuid REFERENCES companies(id) ON DELETE SET NULL,
+  name text NOT NULL,
+  lastname text NOT NULL,
+  email text NOT NULL UNIQUE,
+  department text,
+  profile_picture text,
+  residence_city text,
+  theme text DEFAULT 'system',
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- TABLA: project_experiences
+-- Experiencias de proyecto ligadas a un perfil de usuario
+CREATE TABLE IF NOT EXISTS project_experiences (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_profile_id uuid NOT NULL REFERENCES user_profiles(id) ON DELETE CASCADE,
+  project_name text NOT NULL,
+  company_name text NOT NULL,
+  start_date date NOT NULL,
+  end_date date,
+  status text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
 -- ============================================
 -- ÍNDICES PARA OPTIMIZACIÓN
 -- ============================================
@@ -151,6 +194,9 @@ ALTER TABLE sales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE goals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_experiences ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para products
 CREATE POLICY "Users can view products" ON products FOR SELECT TO authenticated USING (true);
@@ -185,6 +231,33 @@ CREATE POLICY "Users can view goals" ON goals FOR SELECT TO authenticated USING 
 CREATE POLICY "Users can insert goals" ON goals FOR INSERT TO authenticated WITH CHECK (true);
 CREATE POLICY "Users can update goals" ON goals FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "Users can delete goals" ON goals FOR DELETE TO authenticated USING (true);
+
+-- Políticas para companies
+CREATE POLICY "Users can view companies" ON companies FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Users can insert companies" ON companies FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "Users can update companies" ON companies FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+-- Políticas para user_profiles (sólo el dueño)
+CREATE POLICY "Users can view own user_profile" ON user_profiles FOR SELECT TO authenticated USING (auth.uid() = auth_user_id);
+CREATE POLICY "Users can insert own user_profile" ON user_profiles FOR INSERT TO authenticated WITH CHECK (auth.uid() = auth_user_id);
+CREATE POLICY "Users can update own user_profile" ON user_profiles FOR UPDATE TO authenticated USING (auth.uid() = auth_user_id) WITH CHECK (auth.uid() = auth_user_id);
+CREATE POLICY "Users can delete own user_profile" ON user_profiles FOR DELETE TO authenticated USING (auth.uid() = auth_user_id);
+
+-- Políticas para project_experiences (ligadas al perfil del usuario)
+CREATE POLICY "Users can view own project_experiences" ON project_experiences FOR SELECT TO authenticated USING (
+  user_profile_id IN (SELECT id FROM user_profiles WHERE auth_user_id = auth.uid())
+);
+CREATE POLICY "Users can insert own project_experiences" ON project_experiences FOR INSERT TO authenticated WITH CHECK (
+  user_profile_id IN (SELECT id FROM user_profiles WHERE auth_user_id = auth.uid())
+);
+CREATE POLICY "Users can update own project_experiences" ON project_experiences FOR UPDATE TO authenticated USING (
+  user_profile_id IN (SELECT id FROM user_profiles WHERE auth_user_id = auth.uid())
+) WITH CHECK (
+  user_profile_id IN (SELECT id FROM user_profiles WHERE auth_user_id = auth.uid())
+);
+CREATE POLICY "Users can delete own project_experiences" ON project_experiences FOR DELETE TO authenticated USING (
+  user_profile_id IN (SELECT id FROM user_profiles WHERE auth_user_id = auth.uid())
+);
 
 -- ============================================
 -- FIN DEL SCHEMA
